@@ -1,0 +1,51 @@
+#!/bin/sh
+
+### BEGIN INIT INFO
+# Provides:        usg-dns-api
+# Required-Start:  $network $remote_fs $syslog
+# Required-Stop:   $network $remote_fs $syslog
+# Default-Start:   2 3 4 5
+# Default-Stop:
+# Short-Description: Start the usg-dns-api server
+### END INIT INFO
+
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+
+. /lib/lsb/init-functions
+
+DAEMON=/usr/bin/usg-dns-api
+PIDFILE=/var/run/usg-dns-api.pid
+
+test -x $DAEMON || exit 5
+
+case $1 in
+        start)
+                log_daemon_msg "Starting usg-dns-api" "usg-dns-api"
+                start-stop-daemon --start --quiet --oknodo --pidfile $PIDFILE --startas $DAEMON --background -- -p $PIDFILE -c /etc/usg-dns-api/usg-dns-api.yaml server
+                status=$?
+                log_end_msg $status
+                ;;
+        stop)
+                log_daemon_msg "Stopping usg-dns-api" "usg-dns-api"
+                start-stop-daemon --stop --quiet --oknodo --pidfile $PIDFILE
+                log_end_msg $?
+                rm -f $PIDFILE
+                ;;
+        restart)
+                $0 stop && sleep 2 && $0 start
+                ;;
+        try-restart)
+                if $0 status >/dev/null; then
+                        $0 restart
+                else
+                        exit 0
+                fi
+                ;;
+        status)
+                status_of_proc $DAEMON "usg-dns-api"
+                ;;
+        *)
+                echo "Usage: $0 {start|stop|restart|try-restart|status}"
+                exit 2
+                ;;
+esac

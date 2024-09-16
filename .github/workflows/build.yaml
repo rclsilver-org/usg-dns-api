@@ -1,0 +1,100 @@
+name: Build the packages
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ !startsWith(github.ref, 'refs/tags/v') && 20 || 1 }}
+          fetch-tags: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.22
+
+      - name: Generate the version
+        id: version
+        run:
+            echo "value=$(./generate-version.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Build the binaries
+        run: |
+            DEFAULT_CONF_FILE=/etc/usg-dns-api/usg-dns-api.yaml \
+            DEFAULT_DB_FILE=/config/user-data/usg-dns-api.db    \
+            DEFAULT_HOSTS_FILE=/config/user-data/hosts          \
+              make usg-dns-api
+
+      - name: Prepare the packages
+        run: |
+            mkdir -p debian/usr/bin
+            mkdir -p debian/etc/usg-dns-api && cp usg-dns-api.yaml.example debian/etc/usg-dns-api/usg-dns-api.yaml
+
+            for arch in amd64 mips64 arm64; do
+                cp -R debian .debpkg-${arch}
+                cp dist/usg-dns-api-linux-${arch} .debpkg-${arch}/usr/bin/usg-dns-api
+            done
+
+      - name: Build the package
+        id: build_deb_amd64
+        uses: jiro4989/build-deb-action@v3
+        with:
+          package: usg-dns-api
+          package_root: .debpkg-amd64
+          maintainer: Thomas Bétrancourt <thomas@betrancourt.net>
+          version: ${{ steps.version.outputs.value }}
+          arch: 'amd64'
+          desc: 'usg-dns-api'
+          homepage: 'https://github.com/rclsilver-org/usg-dns-api'
+
+      - name: Build the package
+        id: build_deb_mips64
+        uses: jiro4989/build-deb-action@v3
+        with:
+          package: usg-dns-api
+          package_root: .debpkg-mips64
+          maintainer: Thomas Bétrancourt <thomas@betrancourt.net>
+          version: ${{ steps.version.outputs.value }}
+          arch: 'mips'
+          desc: 'usg-dns-api'
+          homepage: 'https://github.com/rclsilver-org/usg-dns-api'
+
+      - name: Build the package
+        id: build_deb_arm64
+        uses: jiro4989/build-deb-action@v3
+        with:
+          package: usg-dns-api
+          package_root: .debpkg-arm64
+          maintainer: Thomas Bétrancourt <thomas@betrancourt.net>
+          version: ${{ steps.version.outputs.value }}
+          arch: 'arm64'
+          desc: 'usg-dns-api'
+          homepage: 'https://github.com/rclsilver-org/usg-dns-api'
+
+      - name: Publish the release
+        uses: "marvinpinto/action-automatic-releases@latest"
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: ${{ !startsWith(github.ref, 'refs/tags/v') && 'latest' || null }}
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          title: ${{ startsWith(github.ref, 'refs/tags/v') && steps.version.outputs.value || 'Development Build' }}
+          files: |
+            dist/usg-dns-api-linux-amd64
+            dist/usg-dns-api-linux-mips64
+            dist/usg-dns-api-linux-arm64
+            ${{ steps.build_deb_amd64.outputs.file_name }}
+            ${{ steps.build_deb_mips64.outputs.file_name }}
+            ${{ steps.build_deb_arm64.outputs.file_name }}

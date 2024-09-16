@@ -1,0 +1,27 @@
+# HTTP server settings
+- key: HTTP_LISTEN_HOST
+  value: 127.0.0.1
+
+- key: HTTP_LISTEN_PORT
+  value: 8080
+
+# Unifi
+- key: UNIFI_URL
+  value: https://unifi-controller.example.com
+
+- key: UNIFI_SITE
+  value: default
+
+- key: UNIFI_USERNAME
+  value: usg-dns-api
+
+- key: UNIFI_PASSWORD
+  value: s3cr3t
+
+# # Hosts
+# - key: HOSTS_FILE
+#   value: /config/user-data/hosts
+
+# # DB
+# - key: DB_PATH
+#   value: /config/user-data/usg-dns-api.db
