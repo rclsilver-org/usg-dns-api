@@ -17,7 +17,7 @@ func validateID(id string) error {
 }
 
 var (
-	validateNameRegexp = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$`)
+	validateNameRegexp = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-\.]{0,61}[a-zA-Z0-9])?$`)
 )
 
 func validateName(name string) error {

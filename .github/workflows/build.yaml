@@ -31,6 +31,10 @@ jobs:
         run:
             echo "value=$(./generate-version.sh)" >> "$GITHUB_OUTPUT"
 
+      - name: Run the tests
+        run: |
+          make test
+
       - name: Build the binaries
         run: |
             DEFAULT_CONF_FILE=/etc/usg-dns-api/usg-dns-api.yaml \
