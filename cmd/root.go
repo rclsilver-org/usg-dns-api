@@ -12,7 +12,7 @@ var (
 	verbose bool
 
 	configFile        string
-	defaultConfigFile string
+	defaultConfigFile = "usg-dns-api.yaml"
 )
 
 var rootCmd = &cobra.Command{
