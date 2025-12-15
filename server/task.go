@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 
@@ -16,7 +17,14 @@ import (
 	"github.com/rclsilver-org/usg-dns-api/unifi"
 )
 
+var (
+	writeHostsFileMut sync.Mutex
+)
+
 func (s *Server) writeHostsFile(ctx context.Context, manual bool) error {
+	writeHostsFileMut.Lock()
+	defer writeHostsFileMut.Unlock()
+
 	logrus.WithContext(ctx).Debugf("starting to write the hosts file (manual: %v)", manual)
 
 	if err := s.unifi.Login(ctx); err != nil {

@@ -43,6 +43,8 @@ func (s *Server) recordAdd(c *gin.Context, in *recordAddIn) (*db.Record, error) 
 		return nil, fmt.Errorf("error while adding the record: %w", err)
 	}
 
+	s.runTask(c.Request.Context())
+
 	return &rec, nil
 }
 
@@ -55,13 +57,19 @@ type recordUpdateIn struct {
 func (s *Server) recordUpdate(c *gin.Context, in *recordUpdateIn) (*db.Record, error) {
 	rec, err := s.db.UpdateRecord(in.ID, in.Name, in.Target)
 	if err != nil {
-		if err == db.ErrNotFound {
+		switch err {
+		case db.ErrNotFound:
 			return nil, errors.NewNotFound(nil, "no record found with this ID")
-		} else if err == db.ErrAlreadyExists {
+
+		case db.ErrAlreadyExists:
 			return nil, errors.NewAlreadyExists(nil, "a record already exists with those parameters")
+
+		default:
+			return nil, fmt.Errorf("error while updating the record: %w", err)
 		}
-		return nil, fmt.Errorf("error while updating the record: %w", err)
 	}
+
+	s.runTask(c.Request.Context())
 
 	return &rec, nil
 }
@@ -71,13 +79,14 @@ type recordDeleteIn struct {
 }
 
 func (s *Server) recordDelete(c *gin.Context, in *recordDeleteIn) error {
-
 	if err := s.db.DeleteRecord(in.ID); err != nil {
 		if err == db.ErrNotFound {
 			return errors.NewNotFound(nil, "no record found with this ID")
 		}
 		return fmt.Errorf("error while deleting the record: %w", err)
 	}
+
+	s.runTask(c.Request.Context())
 
 	return nil
 }
