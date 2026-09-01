@@ -40,6 +40,70 @@ Reverse records are also automatically generated.
    sudo /etc/init.d/usg-dns-api start
    ```
 
+## Configuration
+
+The configuration file is a list of key/value pairs. Every setting may also be
+read from the environment by starting the program with `-c ""` and setting
+`CONFIGURATION_FROM=env:CFG`, each key being then prefixed with `CFG_`.
+
+| Key | Required | Default | Description |
+| --- | --- | --- | --- |
+| `HTTP_LISTEN_HOST` | no | `localhost` | Address the API listens on. |
+| `HTTP_LISTEN_PORT` | no | `8080` | Port the API listens on. |
+| `UNIFI_URL` | yes | | Base URL of the controller, without a trailing slash. |
+| `UNIFI_SITE` | yes | | Site name, usually `default`. |
+| `UNIFI_API_KEY` | no | | API key authenticating against UniFi OS. |
+| `UNIFI_USERNAME` | only without an API key | | Controller account. |
+| `UNIFI_PASSWORD` | only without an API key | | Password of that account. |
+| `UNIFI_INSECURE` | no | `false` | Skip the TLS certificate verification. |
+| `HOSTS_FILE` | no | `/config/user-data/hosts` | Generated hosts file. |
+| `DB_PATH` | no | `/config/user-data/usg-dns-api.db` | Database file. |
+
+The last two defaults are the ones baked into the `.deb` package; a local build
+writes `hosts` and `usg-dns-api.db` in the current directory instead.
+
+### Authenticating against the controller
+
+Two modes are supported, and the API prefix is selected accordingly.
+
+**API key** — the recommended mode for a UniFi OS console (UDM, UNVR, Cloud Key
+Gen2+, UniFi OS Server). Create the key from the UniFi OS interface, under
+`Settings > Integrations`, then configure:
+
+```yaml
+- key: UNIFI_URL
+  value: https://unifi.example.com
+- key: UNIFI_API_KEY
+  value: your-api-key
+```
+
+Each request then carries an `X-API-KEY` header: no session is opened, and
+`UNIFI_USERNAME` and `UNIFI_PASSWORD` are ignored.
+
+**Username and password** — kept for the standalone network application:
+
+```yaml
+- key: UNIFI_USERNAME
+  value: usg-dns-api
+- key: UNIFI_PASSWORD
+  value: s3cr3t
+```
+
+The login is attempted on `/api/auth/login`, which UniFi OS serves, before
+falling back to `/api/login` of a standalone controller.
+
+### Self-signed certificate
+
+Controllers ship with a self-signed certificate, which the HTTP client rejects
+with a `x509: certificate is valid for ...` error. Skip the verification with:
+
+```yaml
+- key: UNIFI_INSECURE
+  value: "true"
+```
+
+A warning is logged at startup whenever the verification is disabled.
+
 ## Persistent dnsmasq Configuration
 
 To configure `dnsmasq` persistently on Ubiquiti routers, edit the `config.gateway.json` file and add the following configuration:
