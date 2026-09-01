@@ -3,6 +3,7 @@ package unifi
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,6 +17,10 @@ import (
 type Client struct {
 	cfg *config
 	clt *http.Client
+
+	// unifiOS reports whether the controller is hosted by UniFi OS, which
+	// serves the network application behind a /proxy/network prefix.
+	unifiOS bool
 }
 
 func NewClient(ctx context.Context) (*Client, error) {
@@ -31,15 +36,32 @@ func NewClient(ctx context.Context) (*Client, error) {
 		return nil, fmt.Errorf("unable to create a cookies jar: %w", err)
 	}
 
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if cfg.Insecure {
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		logrus.WithContext(ctx).Warn("TLS certificate verification is disabled")
+	}
+
 	// build the client
 	client := &Client{
 		cfg: cfg,
 		clt: &http.Client{
-			Jar: jar,
+			Jar:       jar,
+			Transport: transport,
 		},
+		// An API key only exists on UniFi OS, so the prefix is known upfront.
+		unifiOS: cfg.ApiKey != "",
 	}
 
 	return client, nil
+}
+
+// apiPath prefixes a network application path with the right API root.
+func (c *Client) apiPath(uri string) string {
+	if c.unifiOS {
+		return "/proxy/network/api" + uri
+	}
+	return "/api" + uri
 }
 
 func (c *Client) do(ctx context.Context, method, uri string, headers http.Header, queryArgs map[string]string, body any) (*http.Response, error) {
@@ -68,6 +90,14 @@ func (c *Client) do(ctx context.Context, method, uri string, headers http.Header
 		return nil, fmt.Errorf("unable to build the request: %w", err)
 	}
 
+	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if c.cfg.ApiKey != "" {
+		req.Header.Set("X-API-KEY", c.cfg.ApiKey)
+	}
+
 	for k, values := range headers {
 		for _, v := range values {
 			req.Header.Add(k, v)
@@ -89,22 +119,48 @@ func (c *Client) do(ctx context.Context, method, uri string, headers http.Header
 }
 
 func (c *Client) Login(ctx context.Context) error {
-	res, err := c.do(ctx, http.MethodPost, "/login", nil, nil, map[string]string{
+	// An API key authenticates every single request: no session is needed.
+	if c.cfg.ApiKey != "" {
+		logrus.WithContext(ctx).Debug("using the API key authentication, skipping the login")
+		return nil
+	}
+
+	credentials := map[string]string{
 		"username": c.cfg.Username,
 		"password": c.cfg.Password,
-	})
+	}
+
+	// UniFi OS consoles authenticate on /api/auth/login, whereas the standalone
+	// network application uses /api/login. Try the former, then fall back.
+	res, err := c.do(ctx, http.MethodPost, "/api/auth/login", nil, nil, credentials)
 	if err != nil {
 		return fmt.Errorf("unable to execute the query: %w", err)
 	}
+	drain(res)
+
+	if res.StatusCode == http.StatusOK {
+		c.unifiOS = true
+		logrus.WithContext(ctx).Debug("logged in to a unifi-os controller")
+		return nil
+	}
+
+	res, err = c.do(ctx, http.MethodPost, "/api/login", nil, nil, credentials)
+	if err != nil {
+		return fmt.Errorf("unable to execute the query: %w", err)
+	}
+	drain(res)
+
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code: %d", res.StatusCode)
 	}
+	c.unifiOS = false
+	logrus.WithContext(ctx).Debug("logged in to a standalone controller")
 
 	return nil
 }
 
 func (c *Client) GetNetworks(ctx context.Context) ([]NetworkConf, error) {
-	res, err := c.do(ctx, http.MethodGet, "/s/"+c.cfg.Site+"/rest/networkconf", nil, nil, nil)
+	res, err := c.do(ctx, http.MethodGet, c.apiPath("/s/"+c.cfg.Site+"/rest/networkconf"), nil, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to execute the query: %w", err)
 	}
@@ -120,7 +176,7 @@ func (c *Client) GetNetworks(ctx context.Context) ([]NetworkConf, error) {
 }
 
 func (c *Client) GetUsers(ctx context.Context) ([]User, error) {
-	res, err := c.do(ctx, http.MethodGet, "/s/"+c.cfg.Site+"/list/user", nil, nil, nil)
+	res, err := c.do(ctx, http.MethodGet, c.apiPath("/s/"+c.cfg.Site+"/list/user"), nil, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to execute the query: %w", err)
 	}
@@ -133,6 +189,15 @@ func (c *Client) GetUsers(ctx context.Context) ([]User, error) {
 		return nil, err
 	}
 	return result.Data, nil
+}
+
+// drain consumes and closes a response body so the connection can be reused.
+func drain(res *http.Response) {
+	if res == nil || res.Body == nil {
+		return
+	}
+	io.Copy(io.Discard, res.Body)
+	res.Body.Close()
 }
 
 func unmarshal(res *http.Response, ret any) error {

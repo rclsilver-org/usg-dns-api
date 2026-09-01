@@ -12,13 +12,22 @@
 - key: UNIFI_SITE
   value: default
 
-- key: UNIFI_USERNAME
-  value: usg-dns-api
+# Authentication: either an API key (UniFi OS), or a username/password pair.
+# When UNIFI_API_KEY is set, the username and the password are ignored.
+- key: UNIFI_API_KEY
+  value: your-api-key
 
-- key: UNIFI_PASSWORD
-  value: s3cr3t
+# - key: UNIFI_USERNAME
+#   value: usg-dns-api
+#
+# - key: UNIFI_PASSWORD
+#   value: s3cr3t
 
-# # Hosts
+# # Skip the TLS certificate verification (self-signed controller certificate)
+# - key: UNIFI_INSECURE
+#   value: "true"
+
+# # Hosts
 # - key: HOSTS_FILE
 #   value: /config/user-data/hosts
 
